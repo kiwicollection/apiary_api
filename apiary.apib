@@ -1,0 +1,1590 @@
+FORMAT: 1A
+HOST: https://api.stg.kiwicollection.net/v1/
+
+# Kiwi Collection API
+
+*Welcome to the upgraded Kiwi Collection API documentation experience!*
+
+This documentation is enhanced with mock code examples in popular languages, as well as live Production examples tied to our staging environment (if the Production examples aren't working, you may have caught us in the process of rebuilding our staging servers).
+
+*Please note!*
+
+Production code examples will ONLY work if you supply your username and password in the header section of the example. If you don't yet have access or credentials, you can still see the Mock Server examples, which reflect live responses.
+
+Each transaction between the Booking Service Provider(BSP) and the Kiwi API are done through REST-based HTTP requests composed of XML. Both request and response messages are made up of 3 parts:
+
+- HTML header used to authenticate user
+- XML namespace and encoding info
+- Either the Request or Response message
+
+Here’s a sample message that represents a Create Reservation request:
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<CreateReservationRequest PropertyCode="PR002372" InDate="2016-07-18"
+  OutDate="2016-07-21" Adults="2" Children="0" Rooms="1" RateCode="RACK" RoomCode="PTS">
+  <Guests>
+    <Guest FirstName="Bob" LastName="Barker" Title="Mr">
+      <ContactInfo AddressLine1="1235 Main St" AddressLine2="" City="Vancouver" Country="Canada"
+        Email="bobbarker@gmail.com" PhoneCountryCode="1" PhoneAreaCode="888" Phone="123-4567" State="BC"
+        ZipPostal="V2R 3R3" />
+    </Guest>
+  </Guests>
+  <PaymentInfo CardNumber="1999999999999999" CardType="Visa" CardSecurity="123"
+    CardholderName="Bob Barker" ExpiryMonth="09" ExpiryYear="2017" />
+  <MessageToHotel>Please include an extra bed in the room</MessageToHotel>
+</CreateReservationRequest>
+```
+
+The HTML header contains authentication info in it in order to ensure that the user is allowed to use the API. Specifically, the HTML header contains a username, and password.
+
+The XML namespace and encoding info is the same for every transaction and includes the first two lines and the last line of the above example.
+
+The request or response elements will vary depending on the transaction type. The BSP should always send a request-typed message, while the Kiwi API will usually reply with a response-typed message. The exception to this is when an error occurs during the request processing.
+
+
+# Initial Setup
+
+To become a user of the API, you need to register with a representative at Kiwi Collection (currently Dana Hangai, danah@kiwicollection.com). At that point, you will be asked to provide the IP address of the machine that will be used to call the API. In return, Kiwi will provide you with a username, and password which will then need to be used by the HTTP header to authenticate every request to the API.
+
+# First Steps
+
+For testing purposes, it’s suggested that you get started with a tool like SmartBear’s SoapUI (www.soapui.org) in order to aid in testing and discovery. 
+
+The easiest web service method to use is the PropertyDetails call as no XML is posted. Rather, it’s just a straight URL that you visit, but one that you still need to post your credentials in the HTTP header.
+
+Add your credentials to the HTTP header as follows:
+- username
+- password
+
+
+Ensure that you have sent us your IP address, we have added it to our IP access list, and that you are indeed accessing the API from the given IP address
+POST the following request to https://api.kiwicollection.com/v1/propertyDetails: 
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<PropertyDetailsRequest PropertyCode="PR000010" DetailLevel="summary" />
+```
+
+At this point, you should get some XML sent back containing the property details about property PR000010. If you don’t get any XML returned here, you should either get an XML error message or an HTTP error. In this case, please refer to the Error Codes and/or Troubleshooting section of this document.
+
+# Working in the Test Environment
+
+In order to facilitate testing, Kiwi has a test environment which you must use during the development phase. 
+
+The URL for live production use is https://api.kiwicollection.com
+
+The URL for testing and development is https://api.stg.kiwicollection.net
+
+**Note that any reservations in the test environment made with a real credit card will still go through to the hotel.** 
+
+We have therefore set up a fake credit card number to use that will not create a reservation with the hotel, but will in the Kiwi reservation system. The fake credit card number is 1999 9999 9999 9999
+Any 3-digit security code will work with this credit card number. 
+
+Note that the reservation ID that is returned will always be fakeMaker######## if the fake credit card number was used; **if a different reservation ID is returned, then the reservation is a real reservation with the hotel and must be cancelled.**
+
+# Persistent Data
+
+The BSP must host a local database in order to store reservation information from the consumer so that the consumer can access reservation information later on. The BSP should only store the confirmation number from the reservation details. The reservation dates, property ID and room info should be obtained through an API request using the confirmation number instead, as this will ensure that the reservation details are correct. There could be data synchronization issues if the BSP pulls the reservation details from their local database, as the consumer could have potentially previously modified their reservation with Kiwi Collection directly.
+
+# HTTP Header
+
+The HTTP header is used for security purposes and should contain the username, and password. The following is an example of an HTTP header:
+
+```html
+POST https://api.kiwicollection.com/v1/availability HTTP/1.1
+Accept-Encoding: gzip,deflate
+Content-Type: text/xml
+username: apiuser@yourdomain.com
+password: yourPassword
+User-Agent: Jakarta Commons-HttpClient/3.1
+Host: api.kiwicollection.com
+Content-Length: 166
+```
+
+# Web Services URLs
+
+Each web service method has its own endpoint. Here’s a quick reference list:
+
+|||
+|---|:---|
+| PropertyDetails | https://api.kiwicollection.com/v1/propertyDetails |
+| PropertySearch | https://api.kiwicollection.com/v1/propertySearch |
+| Availability (Single) | https://api.kiwicollection.com/v1/availability |
+<!-- | BatchAvailability (Multiple) | https://api.kiwicollection.com/v1/batchAvailability | -->
+| Create Reservation | https://api.kiwicollection.com/v1/createReservation |
+| View Reservation | https://api.kiwicollection.com/v1/viewReservation |
+| View Reservation By External Id | https://api.kiwicollection.com/v1/viewReservationByExternalId |
+| Cancel Reservation | https://api.kiwicollection.com/v1/cancelReservation |
+| Cities | https://api.kiwicollection.com/v1/cities |
+|||
+
+# Error Reporting
+
+If there are any errors from either the Request or the Response, the API will not return the usual Response object. Instead, it will return an Errors object, which contains a list of all the errors encountered during the processing of the Request. Each error has a long description as well as an error code. Here is an example: 
+
+```xml
+<Errors>
+   <Error Code="PROP-001">PropertyCode provided could not be found.</Error>
+</Errors>
+```
+
+
+# API Revision History
+
+Documentation Version | Date | Description
+|---|:---:|:---|
+V1 | Apr 4, 2012 | Initial Documentation
+V2 | June 11, 2013 | Added Availability and Reservation API method documentation
+V3 | July 14, 2014 | Updated some attributes Added BatchAvailability call
+V4 | August 21, 2014 | Updated PropertyDetails, PropertySearch, Availability, BatchAvailability, CreateReservation, Added View ReservationByExternalId and Cities
+V4.1 | Sept 9,2014 | Updated AvailabilityResponse to include RateType, Added BenefitGroup to the PropertySearch api call, added the number of adults, children and children ages to the AvailabilityResponse,PropertySearch,ViewReservation, ViewReservationByExternalId and CreateReservation
+V5 | Feb 10, 2016 | Remove Source from login requirement. Whitelabel access is now assigned, not requested. Convert documentation to API Blueprint for migration to Apiary
+V5.1 | Dec 7, 2017 | Removed BatchAvailability call, see propertySearch with availability element for similar functionality
+||||
+
+
+
+## propertyDetails Method [/propertyDetails]
+
+The propertyDetails method is used to get information about a property. The live production endpoint is:
+https://api.kiwicollection.com/v1/propertyDetails
+
+There are two variables that need to be passed as part of the request:
+
+- PropertyCode: The ID of the property 
+- DetailLevel: Either full, summary or none, depending on how many details of the property you are asking for.
+
+### propertyDetails - full [POST]
+
+DetailLevel "full" returns all of the available data for the supplied property code.
+
++ Request (text/xml)
+
+    + Attributes
+        + PropertyCode: PR002824 (required, string)
+        + DetailLevel: full (required, string)
+    
+    + Headers
+    
+            username: 
+            password: 
+            
+    + Body
+    
+            <?xml version="1.0" encoding="UTF-8"?>
+            <PropertyDetailsRequest PropertyCode="PR002824" DetailLevel="full" />
+
++ Response 200 (text/xml)
+
+    + Body
+            
+            <PropertyDetailResponse>
+                <PropertyInfo Code="PR000007" hasBenefit=”false” hasSpecialOffer=”false”>
+                <PropertyDetails Brand="" CurrencyCode="USD" MaximumRate="559.00" MinimumRate="229.00" NumberOfRooms="312" PropertyLogoURL="" RateDisclaimer="" Recognition="AAA Four Diamond - 2009 Mobil Four Star Gold Key Award Executive Choice Award " Title="Rancho Bernardo Inn Golf Resort &amp; Spa" WebsiteURL="www.ranchobernardoinn.com">
+                <DreamText>A golfing resort in a climate from the gods, the Rancho Bernardo Inn Golf Resort and Spa is a San Diego retreat perfect for countryside explorations.</DreamText>
+                <Description>San Diego's Rancho Bernardo Inn Golf Resort and Spa is the Californian version of a Mediterranean villa. Sunny skies are just the beginning; the ranch also features a European-style interior with French brasserie dining, manicured English gardens, and airy Spanish balconies. Visiting families are close to entertainment of the wide-eyed variety at the nearby SeaWorld, San Diego Zoo, and Legoland. And romantic travelers can settle a few scores on the 18-Hole championship golf course - all in the name of good sportsmanship, of course. Well known among San Diego locals, the Rancho Bernardo Inn's El Bizcocho restaurant pays homage to delicate French cuisine. Reserve a whole evening to enjoy the piano lounge before exploring the delectable à la carte menu and impressive 1,600-label wine list.</Description>
+                <Rating>
+                <KiwiRating ArchitectureDesign="" AttentionToDetail="" FitToPromise="" FoodBeverage="" GenerosityValue="" Location="" Rooms="" Service="" SpaFitness="" WowHipFactor=""/>
+                <LocalRating Source="4.00">source</LocalRating>
+                <StarRating>5.00</StarRating>          </Rating>
+                <LocationInfo Latitude="33.031503" Longitude="-117.067408" LocationDescription="Head in any direction from the Rancho Bernardo Inn Golf Resort and Spa and you'll be well served for diversions. Drive 20 minutes west and you'll hit white sandy beach. Turn the wheel north from the Ranch to find the Wild Animal Park, or simply head southwest for the endless amusements of San Diego city. Arriving is no headache as San Diego Airport is 30 minutes away and the nearest Interstate 15 exit is just 5 minutes from the Ranch. " TimeZone="Mexico/General">
+                <Address AddressLine1="17550 Bernardo Oaks Drive" AddressLine2="" AddressLine3="" City="San Francisco" Region="California" Country="United States" Zone="North America"/> 
+                ZipCode="92128" />
+                </LocationInfo>
+            <ImageUrls>
+              <ImageURL Id="81-xl" Size="xl" Width="970" Height="546">https://cdn.local/media/property/PR000007/xl/slideshow-large-1.jpg      </ImageURL>
+              <ImageURL Id="81-ll" Size="ll" Width="620" Height="348">https://cdn.local/media/property/PR000007/ll/slideshow-large-1.jpg      </ImageURL>
+              <ImageURL Id="81-l" Size="l" Width="460" Height="258">https://cdn.local/media/property/PR000007/l/slideshow-large-1.jpg      </ImageURL>
+              <ImageURL Id="81-m" Size="m" Width="300" Height="168">https://cdn.local/media/property/PR000007/m/slideshow-large-1.jpg      </ImageURL>
+              <ImageURL Id="81-s" Size="s" Width="230" Height="129">https://cdn.local/media/property/PR000007/s/slideshow-large-1.jpg      </ImageURL>
+              <ImageURL Id="81-xs" Size="xs" Width="140" Height="78">https://cdn.local/media/property/PR000007/xs/slideshow-large-1.jpg      </ImageURL>
+              <ImageURL Id="82-xl" Size="xl" Width="970" Height="546">https://cdn.local/media/property/PR000007/xl/slideshow-large-2.jpg      </ImageURL>
+              <ImageURL Id="82-ll" Size="ll" Width="620" Height="348">https://cdn.local/media/property/PR000007/ll/slideshow-large-2.jpg      </ImageURL>
+              <ImageURL Id="82-l" Size="l" Width="460" Height="258">https://cdn.local/media/property/PR000007/l/slideshow-large-2.jpg      </ImageURL>
+              <ImageURL Id="82-m" Size="m" Width="300" Height="168">https://cdn.local/media/property/PR000007/m/slideshow-large-2.jpg      </ImageURL>
+              <ImageURL Id="82-s" Size="s" Width="230" Height="129">https://cdn.local/media/property/PR000007/s/slideshow-large-2.jpg      </ImageURL>
+              <ImageURL Id="82-xs" Size="xs" Width="140" Height="78">https://cdn.local/media/property/PR000007/xs/slideshow-large-2.jpg      </ImageURL>
+              <ImageURL Id="83-xl" Size="xl" Width="970" Height="546">https://cdn.local/media/property/PR000007/xl/slideshow-large-3.jpg      </ImageURL>
+              <ImageURL Id="83-ll" Size="ll" Width="620" Height="348">https://cdn.local/media/property/PR000007/ll/slideshow-large-3.jpg      </ImageURL>
+              <ImageURL Id="83-l" Size="l" Width="460" Height="258">https://cdn.local/media/property/PR000007/l/slideshow-large-3.jpg      </ImageURL>
+              <ImageURL Id="83-m" Size="m" Width="300" Height="168">https://cdn.local/media/property/PR000007/m/slideshow-large-3.jpg      </ImageURL>
+              <ImageURL Id="83-s" Size="s" Width="230" Height="129">https://cdn.local/media/property/PR000007/s/slideshow-large-3.jpg      </ImageURL>
+              <ImageURL Id="83-xs" Size="xs" Width="140" Height="78">https://cdn.local/media/property/PR000007/xs/slideshow-large-3.jpg      </ImageURL>
+              <ImageURL Id="84-xl" Size="xl" Width="970" Height="546">https://cdn.local/media/property/PR000007/xl/slideshow-large-4.jpg      </ImageURL>
+              <ImageURL Id="84-ll" Size="ll" Width="620" Height="348">https://cdn.local/media/property/PR000007/ll/slideshow-large-4.jpg      </ImageURL>
+              <ImageURL Id="84-l" Size="l" Width="460" Height="258">https://cdn.local/media/property/PR000007/l/slideshow-large-4.jpg      </ImageURL>
+              <ImageURL Id="84-m" Size="m" Width="300" Height="168">https://cdn.local/media/property/PR000007/m/slideshow-large-4.jpg      </ImageURL>
+              <ImageURL Id="84-s" Size="s" Width="230" Height="129">https://cdn.local/media/property/PR000007/s/slideshow-large-4.jpg      </ImageURL>
+              <ImageURL Id="84-xs" Size="xs" Width="140" Height="78">https://cdn.local/media/property/PR000007/xs/slideshow-large-4.jpg      </ImageURL>
+              <ImageURL Id="85-xl" Size="xl" Width="970" Height="546">https://cdn.local/media/property/PR000007/xl/slideshow-large-5.jpg      </ImageURL>
+              <ImageURL Id="85-ll" Size="ll" Width="620" Height="348">https://cdn.local/media/property/PR000007/ll/slideshow-large-5.jpg      </ImageURL>
+              <ImageURL Id="85-l" Size="l" Width="460" Height="258">https://cdn.local/media/property/PR000007/l/slideshow-large-5.jpg      </ImageURL>
+              <ImageURL Id="85-m" Size="m" Width="300" Height="168">https://cdn.local/media/property/PR000007/m/slideshow-large-5.jpg      </ImageURL>
+              <ImageURL Id="85-s" Size="s" Width="230" Height="129">https://cdn.local/media/property/PR000007/s/slideshow-large-5.jpg      </ImageURL>
+              <ImageURL Id="85-xs" Size="xs" Width="140" Height="78">https://cdn.local/media/property/PR000007/xs/slideshow-large-5.jpg      </ImageURL>
+              <ImageURL Id="86-xl" Size="xl" Width="970" Height="546">https://cdn.local/media/property/PR000007/xl/slideshow-large-6.jpg      </ImageURL>
+              <ImageURL Id="86-ll" Size="ll" Width="620" Height="348">https://cdn.local/media/property/PR000007/ll/slideshow-large-6.jpg      </ImageURL>
+              <ImageURL Id="86-l" Size="l" Width="460" Height="258">https://cdn.local/media/property/PR000007/l/slideshow-large-6.jpg      </ImageURL>
+              <ImageURL Id="86-m" Size="m" Width="300" Height="168">https://cdn.local/media/property/PR000007/m/slideshow-large-6.jpg      </ImageURL>
+              <ImageURL Id="86-s" Size="s" Width="230" Height="129">https://cdn.local/media/property/PR000007/s/slideshow-large-6.jpg      </ImageURL>
+              <ImageURL Id="86-xs" Size="xs" Width="140" Height="78">https://cdn.local/media/property/PR000007/xs/slideshow-large-6.jpg      </ImageURL>
+              <ImageURL Id="87-xl" Size="xl" Width="970" Height="546">https://cdn.local/media/property/PR000007/xl/slideshow-large-7.jpg      </ImageURL>
+              <ImageURL Id="87-ll" Size="ll" Width="620" Height="348">https://cdn.local/media/property/PR000007/ll/slideshow-large-7.jpg      </ImageURL>
+              <ImageURL Id="87-l" Size="l" Width="460" Height="258">https://cdn.local/media/property/PR000007/l/slideshow-large-7.jpg      </ImageURL>
+              <ImageURL Id="87-m" Size="m" Width="300" Height="168">https://cdn.local/media/property/PR000007/m/slideshow-large-7.jpg      </ImageURL>
+              <ImageURL Id="87-s" Size="s" Width="230" Height="129">https://cdn.local/media/property/PR000007/s/slideshow-large-7.jpg      </ImageURL>
+              <ImageURL Id="87-xs" Size="xs" Width="140" Height="78">https://cdn.local/media/property/PR000007/xs/slideshow-large-7.jpg      </ImageURL>
+              <ImageURL Id="88-xl" Size="xl" Width="970" Height="546">https://cdn.local/media/property/PR000007/xl/slideshow-large-8.jpg      </ImageURL>
+              <ImageURL Id="88-ll" Size="ll" Width="620" Height="348">https://cdn.local/media/property/PR000007/ll/slideshow-large-8.jpg      </ImageURL>
+              <ImageURL Id="88-l" Size="l" Width="460" Height="258">https://cdn.local/media/property/PR000007/l/slideshow-large-8.jpg      </ImageURL>
+              <ImageURL Id="88-m" Size="m" Width="300" Height="168">https://cdn.local/media/property/PR000007/m/slideshow-large-8.jpg      </ImageURL>
+              <ImageURL Id="88-s" Size="s" Width="230" Height="129">https://cdn.local/media/property/PR000007/s/slideshow-large-8.jpg      </ImageURL>
+              <ImageURL Id="88-xs" Size="xs" Width="140" Height="78">https://cdn.local/media/property/PR000007/xs/slideshow-large-8.jpg      </ImageURL>
+            </ImageUrls>
+            <Features>
+            <Amenities>
+            <Amenity>Concierge 24 hour</Amenity>
+            <Amenity>Front Desk 24 hour</Amenity>
+            <Amenity>Nanny Babysitting Service</Amenity>
+            <Amenity>Laundry Service</Amenity>            
+            </Amenities>
+            <RoomAmenities>
+            <RoomAmenity>40 inch LCD TV</RoomAmenity>
+            </RoomAmenities>
+            <Facilities>
+            <Facility>Indoor Sauna / Spa</Facility>
+            <Facility>Lounge/Bar</Facility>
+            <Facility>Meeting / Conference Rooms</Facility>
+            <Facility>Restaurant(s)</Facility>
+            <Facility>Spa</Facility>
+            </Facilities>
+            <Interests>
+            <Interest>Art/Cultural Venues Nearby</Interest>
+            <Interest>Shopping Nearby</Interest>
+            <Interest>Spa/Wellness Retreat</Interest>
+            </Interests>
+            <Styles>
+            <Style>Contemporary</Style>
+            </Styles>
+            <Settings>
+            <Setting>City</Setting>
+            </Settings>
+            </Features>
+            <PhoneNumbers>
+            <PhoneNumber Type="Local Number" Number="+1.858.675.8500"/>
+            <PhoneNumber Type="Toll-Free Number" Number="+1.877.517.9342"/>
+            <PhoneNumber Type="Fax Number" Number="+1.858.675.8501"/>
+            </PhoneNumbers>
+            </PropertyDetails>
+            <SpecialOffers></SpecialOffers>
+            <Benefits></Benefits>
+            </PropertyInfo>
+            </PropertyDetailResponse>
+
+### propertyDetails - summary [POST]
+
+DetailLevel "summary" returns a shorter summary of data for the supplied property code.
+
++ Request (text/xml)
+
+    + Attributes
+        + PropertyCode: PR002824 (required, string)
+        + DetailLevel: summary (required, string)
+    
+    + Headers
+    
+            username:
+            password:
+            
+    + Body
+    
+            <?xml version="1.0" encoding="UTF-8"?>
+            <PropertyDetailsRequest PropertyCode="PR002824" DetailLevel="summary" />
+
++ Response 200 (text/xml)
+
+    + Body
+
+            <PropertyDetailResponse>
+            <PropertyInfo Code="PR000007" hasBenefit=”false” hasSpecialOffer=”false”>
+                  <PropertyDetails CurrencyCode="USD" MaximumRate="559" MinimumRate="229" NumberOfRooms="312" Title="Rancho Bernardo Inn Golf Resort &amp; Spa">
+                     <DreamText>A golfing resort in a climate from the gods, the Rancho Bernardo Inn Golf Resort and Spa is a San Diego retreat perfect for countryside explorations.</DreamText>
+                     <Rating>
+                        <KiwiRating ArchitectureDesign="" AttentionToDetail="" FitToPromise="" FoodBeverage="" GenerosityValue="" Location="" Rooms="" Service="" SpaFitness="" WowHipFactor=""/>
+                        <LocalRating Source="source">4</LocalRating>
+                        <StarRating>5.00</StarRating>          </Rating>
+                     <LocationInfo Latitude="33.031503" Longitude="-117.067408">
+                        <Address City="" Region="California" Country="United States" Zone=""/>
+                     </LocationInfo>
+                     <ImageUrls>
+                       <ImageURL Id="81-s" Size="s" Width="230" Height="129">
+                  https://cdn.local/media/property/PR000007/s/slideshow-large-1.jpg    </ImageURL>
+                            <ImageURL Id="82-s" Size="s" Width="230" Height="129">
+                  https://cdn.local/media/property/PR000007/s/slideshow-large-2.jpg    </ImageURL>
+                            <ImageURL Id="83-s" Size="s" Width="230" Height="129">
+                  https://cdn.local/media/property/PR000007/s/slideshow-large-3.jpg    </ImageURL>
+                            <ImageURL Id="84-s" Size="s" Width="230" Height="129">
+                  https://cdn.local/media/property/PR000007/s/slideshow-large-4.jpg    </ImageURL>
+                            <ImageURL Id="85-s" Size="s" Width="230" Height="129">
+                  https://cdn.local/media/property/PR000007/s/slideshow-large-5.jpg    </ImageURL>
+                            <ImageURL Id="86-s" Size="s" Width="230" Height="129">
+                  https://cdn.local/media/property/PR000007/s/slideshow-large-6.jpg    </ImageURL>
+                            <ImageURL Id="87-s" Size="s" Width="230" Height="129">
+                  https://cdn.local/media/property/PR000007/s/slideshow-large-7.jpg    </ImageURL>
+                            <ImageURL Id="88-s" Size="s" Width="230" Height="129">
+                  https://cdn.local/media/property/PR000007/s/slideshow-large-8.jpg    </ImageURL>
+                        </ImageUrls>
+              </ImageUrls>
+                     <Features>
+                     <Amenities>
+                        <Amenity>Concierge 24 hour</Amenity>
+                        <Amenity>Front Desk 24 hour</Amenity>
+                        <Amenity>Nanny Babysitting Service</Amenity>
+                        <Amenity>Laundry Service</Amenity>
+                     </Amenities>
+                     <RoomAmenities>
+                        <RoomAmenity>40 inch LCD TV</RoomAmenity>
+                        </RoomAmenities>
+                        <Facilities>
+                           <Facility>Indoor Sauna / Spa</Facility>
+                           <Facility>Lounge/Bar</Facility>
+                           <Facility>Meeting / Conference Rooms</Facility>
+                           <Facility>Restaurant(s)</Facility>
+                           <Facility>Spa</Facility>
+                        </Facilities>
+                        <Interests>
+                           <Interest>Art/Cultural Venues Nearby</Interest>
+                           <Interest>Shopping Nearby</Interest>
+                           <Interest>Spa/Wellness Retreat</Interest>
+                        </Interests>
+                        <Styles>
+                           <Style>Contemporary</Style>
+                        </Styles>
+                        <Settings>
+                           <Setting>City</Setting>
+                        </Settings>
+                     </Features>
+                  </PropertyDetails>
+                  <SpecialOffers></SpecialOffers>
+                  <Benefits></Benefits>
+               </PropertyInfo>
+            </PropertyDetailResponse>
+
+
+### propertyDetails - none [POST]
+
+DetailLevel "none" returns only hasSpecialOffer and hasBenefit.
+
++ Request (text/xml)
+
+    + Attributes
+        + PropertyCode: PR002824 (required, string)
+        + DetailLevel: none (required, string)
+    
+    + Headers
+    
+            username:
+            password:
+            
+    + Body
+    
+            <?xml version="1.0" encoding="UTF-8"?>
+            <PropertyDetailsRequest PropertyCode="PR002824" DetailLevel="none" />
+
++ Response 200 (text/xml)
+
+    + Body
+
+            <PropertyDetailResponse>
+                <PropertyInfo Code="PR002824" hasSpecialOffer=”false” hasBenefit=”false”></PropertyInfo>
+            </PropertyDetailResponse>
+
+
+## propertySearch Method [/propertySearch]
+
+The PropertySearch method is used to return a list of properties that match given search criteria. Perhaps more importantly, it can also optionally return availability information for all of the properties that match the given criteria. Its endpoint is:
+https://api.kiwicollection.com/v1/propertySearch
+
+There are three main components of this request. DetailLevel, Availability, and SearchParam.
+
+- DetailLevel attribute: Similar to the PropertyDetails request, this value can either be none, summary or full. This controls the amount of information we get returned for each property. It is recommended to use either none or summary, as these should provide adequate information to show the end user.
+- Availability element: (Optional) This is completely optional and is to only be used if you want to return availability information for each property returned by the Property Search. For example, the sample request above would return a list of all Kiwi Collection properties in New York along with an availability flag and some pricing information. All attributes are required:
+    - InDate: First night of the stay. Formatted YYYY-MM-DD.
+    - OutDate: Day that the guest is leaving. Must be later than InDate. Formatted YYYY-MM-DD.
+    - Adults: Number of adults
+    - Children: Number of Children
+    - Children element (Optional): The children element contains child element(s) as many as the children specified in the attribute above ,anything beyond the specified amount will be ignored.
+        - Child element: contains age attribute  
+    - Rooms: number of rooms. 
+- SearchParam element: The SearchParam element is used for setting the search criteria. It can have one or more sub-elements which are AND-ed together to form a more complex criterion. The first four of the sub-elements (keyword, city, region, country) only allow for a single item:
+    - Keyword: `<Keyword>value</Keyword>`
+    - City: `<City>value</City>`
+    - Region: `<Region>value</Region>`
+    - Country: `<Country>value</Country>`
+
+    - Interest: 
+    
+                <Interests>
+                    <Interest type="Park" />
+                    <Interest type="Shopping" />
+                </Interests>
+    
+    - Setting: Multi-params, as above.
+    - Style: Multi-params, as above.
+    - Facility: Multi-params, as above.
+    - Brand: Multi-params, as above.
+    
+The remaining five SearchParam sub-elements (setting, style, interest, facility, brand) allow for multiple values.
+
+The structure of a PropertySearch response is very similar to a PropertyDetails response, except that it can contain multiple Properties, and if the request includes the availability parameter, the response will contain an AvailabilityInfo element within the PropertyInfo element. 
+
+The AvailabilityInfo does not contain complete info on all the rooms for that property. Rather it is just an indicator that this property has availability for at least one room. To find out more detailed information about availability for a property, one should do an Availability Request.
+
+
+### propertySeach - by city [POST]
+
+The above example shows the most basic search by city. DetailLevel is set to "none" and no optional params are supplied.
+The response contains property codes for the requested city, as well as booleans to show if specialOffers and Benefits exist for those properties.
+
++ Request (text/xml)
+
+    + Headers
+    
+            username:
+            password: 
+            
+    + Body
+    
+            <?xml version="1.0" encoding="UTF-8"?>
+            <PropertySearchRequest DetailLevel="none">
+              <SearchParam>
+                <City>San Diego</City>
+              </SearchParam>
+            </PropertySearchRequest>
+
++ Response 200 (text/xml)
+
+    + Body
+
+            <?xml version="1.0" encoding="utf-8"?>
+            <PropertySearchResponse NumProperties="12">
+                <PropertyInfo Code="PR006628" hasSpecialOffer="false" hasBenefit="false"></PropertyInfo>      
+                <PropertyInfo Code="PR002492" hasSpecialOffer="false" hasBenefit="false"></PropertyInfo>      
+                <PropertyInfo Code="PR000741" hasSpecialOffer="false" hasBenefit="false"></PropertyInfo>      
+                <PropertyInfo Code="PR010822" hasSpecialOffer="false" hasBenefit="true"></PropertyInfo>     
+                <PropertyInfo Code="PR001244" hasSpecialOffer="false" hasBenefit="true"></PropertyInfo>     
+                <PropertyInfo Code="PR002219" hasSpecialOffer="false" hasBenefit="false"></PropertyInfo>      
+                <PropertyInfo Code="PR000008" hasSpecialOffer="false" hasBenefit="false"></PropertyInfo>      
+                <PropertyInfo Code="PR006573" hasSpecialOffer="false" hasBenefit="false"></PropertyInfo>      
+                <PropertyInfo Code="PR001373" hasSpecialOffer="false" hasBenefit="false"></PropertyInfo>      
+                <PropertyInfo Code="PR000144" hasSpecialOffer="false" hasBenefit="false"></PropertyInfo>      
+                <PropertyInfo Code="PR001043" hasSpecialOffer="false" hasBenefit="false"></PropertyInfo>      
+                <PropertyInfo Code="PR005456" hasSpecialOffer="false" hasBenefit="true"></PropertyInfo>  
+            </PropertySearchResponse>
+
+### propertySearch - by city, with dates [POST]
+
+This example requests availability information (because dates are included), for a single city, but DetailLevel is set to "none" and no further optional params are supplied.
+The response contains property codes for the requested city, Availability status (true/false), LowestNightRate, and the currency code of the rate.
+
++ Request (text/xml)
+
+    + Attributes
+        + DetailLevel: summary (required, string) - This value can either be "none", "summary" or "full". This controls the amount of information we get returned for each property. It is recommended to use either none or summary, as these should provide adequate information to show the end user.
+        + SearchParam: <City>San Diego</city> (required)
+        + Availability: InDate OutDate Adults Children Room - This is completely optional and is to only be used if you want to return availability information for each property returned by the Property Search. For example, this sample request will return a list of all Kiwi Collection properties in San Diego along with an availability flag and some pricing information. All attributes are required.
+        
+    + Headers
+    
+            username:
+            password: 
+            
+    + Body
+    
+            <?xml version="1.0" encoding="UTF-8"?>
+            <PropertySearchRequest DetailLevel="none">
+              <SearchParam>
+                <City>San Diego</City>
+              </SearchParam>
+              <Availability InDate='2016-07-12' OutDate='2016-07-14' Adults='2' Children='0' Room='1' />
+            </PropertySearchRequest>
+
++ Response 200 (text/xml)
+
+    + Body
+    
+            <?xml version="1.0" encoding="utf-8"?>
+            <PropertySearchResponse NumProperties="12">
+                <PropertyInfo Code="PR000741" hasSpecialOffer="false" hasBenefit="false">
+                    <AvailabilityInfo Available="true" LowestNightRate="329.00" CurrencyCode="USD" />  
+                </PropertyInfo>      
+                <PropertyInfo Code="PR002492" hasSpecialOffer="false" hasBenefit="false">
+                    <AvailabilityInfo Available="true" LowestNightRate="739.00" CurrencyCode="USD" />  
+                 </PropertyInfo>      
+                 <PropertyInfo Code="PR006628" hasSpecialOffer="false" hasBenefit="false">
+                    <AvailabilityInfo Available="true" LowestNightRate="359.00" CurrencyCode="USD" />  
+                 </PropertyInfo>      
+                 <PropertyInfo Code="PR000144" hasSpecialOffer="false" hasBenefit="false">
+                    <AvailabilityInfo Available="true" LowestNightRate="639.00" CurrencyCode="USD" />  
+                </PropertyInfo>      
+                <PropertyInfo Code="PR001244" hasSpecialOffer="false" hasBenefit="true">
+                    <AvailabilityInfo Available="true" LowestNightRate="351.12" CurrencyCode="USD" />  
+                </PropertyInfo>      
+                <PropertyInfo Code="PR010822" hasSpecialOffer="false" hasBenefit="true">
+                    <AvailabilityInfo Available="true" LowestNightRate="279.00" CurrencyCode="USD" />  
+                </PropertyInfo>      
+                <PropertyInfo Code="PR002219" hasSpecialOffer="false" hasBenefit="false">
+                    <AvailabilityInfo Available="false"/>  
+                </PropertyInfo>      
+                <PropertyInfo Code="PR001043" hasSpecialOffer="false" hasBenefit="false">
+                    <AvailabilityInfo Available="true" LowestNightRate="0.00" />  
+                </PropertyInfo>      
+                <PropertyInfo Code="PR006573" hasSpecialOffer="false" hasBenefit="false">
+                    <AvailabilityInfo Available="false"/>  
+                </PropertyInfo>      
+                <PropertyInfo Code="PR005456" hasSpecialOffer="false" hasBenefit="true">
+                    <AvailabilityInfo Available="false" />  
+                </PropertyInfo>      
+                <PropertyInfo Code="PR000008" hasSpecialOffer="false" hasBenefit="false">
+                    <AvailabilityInfo Available="true" LowestNightRate="389.00"  CurrencyCode="USD" />  
+                </PropertyInfo>      
+                <PropertyInfo Code="PR001373" hasSpecialOffer="false" hasBenefit="false">
+                    <AvailabilityInfo Available="true" LowestNightRate="379.00"  CurrencyCode="USD" />  
+                </PropertyInfo>  
+            </PropertySearchResponse>
+    
+### propertySearch - by city, with dates, with optional params [POST]
+
+This example requests availability information (because dates are included), for a single city, but DetailLevel is set to "none" and no further optional params are supplied. DetailLevel for this example is "summary".
+The response contains property codes for the requested city, Availability status (true/false), LowestNightRate, and the currency code of the rate.
+
++ Request (text/xml)
+
+    + Attributes
+        + DetailLevel: summary (required) - This value can either be "none", "summary" or "full". This controls the amount of information we get returned for each property. It is recommended to use either none or summary, as these should provide adequate information to show the end user.
+        + SearchParam : San Diego Hiking Swimming (required) - For this example, we are supplying the city (San Diego), as well as two interests (Hiking, and Swimming).
+        + Availability: InDate OutDate Adults Children Room - If included, all attributes are required.
+         
+    + Headers
+    
+            username:
+            password: 
+            
+    + Body
+    
+            <?xml version="1.0" encoding="UTF-8"?>
+            <PropertySearchRequest DetailLevel="summary">
+                <SearchParam>
+                    <City>San Diego</City>
+                    <Interests>
+                        <Interest type="Hiking" />
+                        <Interest type="Swimming" />
+                    </Interests>
+                </SearchParam>
+                <Availability InDate='2016-07-12' OutDate='2016-07-14' Adults='2' Children='0' Room='1' />
+            </PropertySearchRequest>
+
++ Response 200 (text/xml)
+
+    + Body
+    
+            <?xml version="1.0" encoding="utf-8"?>
+            <PropertySearchResponse NumProperties="3">
+                  <PropertyInfo Code="PR006628" hasSpecialOffer="false" hasBenefit="false">
+                <PropertyDetails
+                    CurrencyCode="USD"
+                    MaximumRate="559"
+                    MinimumRate="189"
+                    NumberOfRooms="159"
+                    Title="Andaz San Diego" >
+                  <DreamText>Andaz San Diego reflects the hip culture of the surrounding Gaslamp Quarter - boho chic cranked up a few notches with a notable sheen. A refuge for the young and restless, and the young at heart.</DreamText>
+                  <Rating>
+                    <KiwiRating ArchitectureDesign="7"
+                        AttentionToDetail="9"
+                        FitToPromise="9"
+                        FoodBeverage="9"
+                        GenerosityValue="9"
+                        Location="8"
+                        Rooms="8"
+                        Service="8"
+                        SpaFitness="6"
+                        WowHipFactor="9">8.2</KiwiRating>
+                      <LocalRating Source=""></LocalRating>
+                      <StarRating>5</StarRating>
+                    </Rating>
+                    <LocationInfo Latitude="32.713612"
+                        Longitude="-117.15921" >
+                      <Address
+                        City="San Diego"
+                        Region="California"
+                        RegionIsoCode="US-CA"
+                        Country="United States"
+                        CountryIsoCode="US"
+                        Area="Greater San Diego"
+                        Zone="North America" />
+                    </LocationInfo>
+              <ImageUrls>
+                  <ImageURL Id="44026-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR006628/s/006628-01-01Andaz-SD-Lobby.jpg    </ImageURL>
+                  <ImageURL Id="44027-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR006628/s/006628-02-16Rooftop-Pool.jpg    </ImageURL>
+                  <ImageURL Id="44028-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR006628/s/006628-03-Andaz-Guest-Room.jpg    </ImageURL>
+                  <ImageURL Id="44029-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR006628/s/006628-04-Andaz-San-Diego-Exterior-low.jpg    </ImageURL>
+                  <ImageURL Id="44030-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR006628/s/006628-05-Andaz-San-Diego-PRINT.jpg    </ImageURL>
+                  <ImageURL Id="44031-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR006628/s/006628-06-East-Roof.jpg    </ImageURL>
+                  <ImageURL Id="44032-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR006628/s/006628-07-Ivy-Wine-Bar-low.jpg    </ImageURL>
+                </ImageUrls>
+                        <Features>
+                          <Amenities>
+                            <Amenity>Wheelchair Accessible</Amenity>
+                            <Amenity>Pets Allowed (Restrictions may Apply)</Amenity>
+                            <Amenity>DVD Player</Amenity>
+                            <Amenity>ATM Machine</Amenity>
+                            <Amenity>Turndown Service</Amenity>
+                            <Amenity>Courtesy Car</Amenity>
+                            <Amenity>iPod dock in rooms</Amenity>
+                            <Amenity>Gazebo / Private Relaxation</Amenity>
+                            <Amenity>Gift Shop</Amenity>
+                            <Amenity>In-room safe</Amenity>
+                            <Amenity>Laundry Service</Amenity>
+                            <Amenity>Non-Smoking Rooms</Amenity>
+                            <Amenity>Concierge</Amenity>
+                            <Amenity>Outdoor Dining &amp; Lounging Area</Amenity>
+                            <Amenity>Flat Screen TV</Amenity>
+                            <Amenity>Valet Parking</Amenity>
+                            <Amenity>Front Desk (24-Hour)</Amenity>
+                            <Amenity>High Speed Internet (Complimentary)</Amenity>
+                            <Amenity>Room Service (24-Hour)</Amenity>
+                          </Amenities>
+                          <Facilities>
+                            <Facility>Fitness Centre</Facility>
+                            <Facility>Banquet &amp; Catering Facilities</Facility>
+                            <Facility>Meeting / Conference Rooms</Facility>
+                            <Facility>Gift Shop</Facility>
+                            <Facility>Boutique Shopping</Facility>
+                            <Facility>Business Centre</Facility>
+                            <Facility>Private Dining Room</Facility>
+                            <Facility>Meeting / Private Room</Facility>
+                            <Facility>Lounge/Bar</Facility>
+                            <Facility>Swimming Pool - Outdoor</Facility>
+                            <Facility>Restaurant(s)</Facility>
+                            <Facility>Video conference</Facility>
+                          </Facilities>
+                          <Interests>
+                            <Interest>Pet-friendly</Interest>
+                            <Interest>Business</Interest>
+                            <Interest>Family Friendly</Interest>
+                            <Interest>Fishing</Interest>
+                            <Interest>Cooking Classes</Interest>
+                            <Interest>Whale Watching</Interest>
+                            <Interest>Swimming</Interest>
+                            <Interest>Wedding</Interest>
+                            <Interest>Diving</Interest>
+                            <Interest>Hiking</Interest>
+                            <Interest>Snorkeling</Interest>
+                            <Interest>Gastronomy</Interest>
+                            <Interest>Nightlife</Interest>
+                            <Interest>Sightseeing</Interest>
+                          </Interests>
+                          <Styles>
+                            <Style>Boutique</Style>
+                            <Style>Modern</Style>
+                            <Style>Hotel</Style>
+                          </Styles>
+                          <Settings>
+                            <Setting>City</Setting>
+                          </Settings>
+                        </Features>
+                    </PropertyDetails>
+                        </PropertyInfo>      <PropertyInfo Code="PR002219" hasSpecialOffer="false" hasBenefit="false">
+                <PropertyDetails
+                    CurrencyCode="USD"
+                    MaximumRate="645.67"
+                    MinimumRate="250"
+                    NumberOfRooms="120"
+                    Title="L&#039;Auberge Del Mar" >
+                  <DreamText>L&#039;Auberge Del Mar is nestled in a picturesque California village north of San Diego. Enjoy breathtaking beaches, a famous racetrack, and ballooning in a seaside estate steeped in Hollywood history.</DreamText>
+                  <Rating>
+                    <KiwiRating ArchitectureDesign="8"
+                        AttentionToDetail="8"
+                        FitToPromise="7"
+                        FoodBeverage="7"
+                        GenerosityValue="7"
+                        Location="7"
+                        Rooms="8"
+                        Service="8"
+                        SpaFitness="7"
+                        WowHipFactor="6">7.3</KiwiRating>
+                      <LocalRating Source="AAA Diamond Rating">4</LocalRating>
+                      <StarRating>4.5</StarRating>
+                    </Rating>
+                    <LocationInfo Latitude="32.960165"
+                        Longitude="-117.265776" >
+                      <Address
+                        City="Del Mar"
+                        Region="California"
+                        RegionIsoCode="US-CA"
+                        Country="United States"
+                        CountryIsoCode="US"
+                        Area="Greater San Diego"
+                        Zone="North America" />
+                    </LocationInfo>
+              <ImageUrls>
+                  <ImageURL Id="12301-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR002219/s/002219-01-hotel-courtyard-beach-night.jpg    </ImageURL>
+                  <ImageURL Id="12302-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR002219/s/002219-02-sunny-bedroom-with-fireplace.jpg    </ImageURL>
+                  <ImageURL Id="12303-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR002219/s/002219-03-outdoor-dining-lounging.jpg    </ImageURL>
+                  <ImageURL Id="12304-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR002219/s/002219-04-outdoor-pool-lounging.jpg    </ImageURL>
+                  <ImageURL Id="12305-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR002219/s/002219-05-hotel-entrance-daytime.jpg    </ImageURL>
+                  <ImageURL Id="12306-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR002219/s/002219-06-lobby-reception.jpg    </ImageURL>
+                  <ImageURL Id="12307-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR002219/s/002219-07-bedroom-closeup.jpg    </ImageURL>
+                  <ImageURL Id="12308-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR002219/s/002219-08-spa-entrance.jpg    </ImageURL>
+                  <ImageURL Id="12309-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR002219/s/002219-09-outdoor-lounging-night.jpg    </ImageURL>
+                  <ImageURL Id="12310-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR002219/s/002219-10-courtyard-night.jpg    </ImageURL>
+                  <ImageURL Id="12311-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR002219/s/002219-11-restaurant.jpg    </ImageURL>
+                </ImageUrls>
+                        <Features>
+                          <Perks>
+                                                            <Perk type="VISA" />
+                                          </Perks>
+                          <Amenities>
+                            <Amenity>Turndown Service</Amenity>
+                            <Amenity>Laundry Service</Amenity>
+                            <Amenity>Non-Smoking Rooms</Amenity>
+                            <Amenity>Concierge</Amenity>
+                            <Amenity>Parking</Amenity>
+                            <Amenity>Valet Parking</Amenity>
+                            <Amenity>Front Desk (24-Hour)</Amenity>
+                            <Amenity>High Speed Internet (Wireless)</Amenity>
+                            <Amenity>Massage</Amenity>
+                            <Amenity>Room Service (24-Hour)</Amenity>
+                          </Amenities>
+                          <Facilities>
+                            <Facility>Fitness Centre</Facility>
+                            <Facility>Jacuzzi / Hot Tub</Facility>
+                            <Facility>Banquet &amp; Catering Facilities</Facility>
+                            <Facility>Meeting / Conference Rooms</Facility>
+                            <Facility>Spa</Facility>
+                            <Facility>Lounge/Bar</Facility>
+                            <Facility>Swimming Pool - Outdoor</Facility>
+                            <Facility>Restaurant(s)</Facility>
+                          </Facilities>
+                          <Interests>
+                            <Interest>Swimming</Interest>
+                            <Interest>Hiking</Interest>
+                            <Interest>Relaxing</Interest>
+                            <Interest>Gastronomy</Interest>
+                            <Interest>Spa</Interest>
+                            <Interest>Sightseeing</Interest>
+                            <Interest>Romance</Interest>
+                          </Interests>
+                          <Styles>
+                            <Style>Boutique</Style>
+                            <Style>Classic</Style>
+                            <Style>Modern</Style>
+                            <Style>Resort</Style>
+                          </Styles>
+                          <Settings>
+                            <Setting>Beach</Setting>
+                            <Setting>Coastal</Setting>
+                          </Settings>
+                        </Features>
+                    </PropertyDetails>
+                        </PropertyInfo>      <PropertyInfo Code="PR001373" hasSpecialOffer="false" hasBenefit="false">
+                <PropertyDetails
+                    CurrencyCode="USD"
+                    MaximumRate="999"
+                    MinimumRate="250"
+                    NumberOfRooms="610"
+                    Title="Omni La Costa Resort &amp; Spa" >
+                  <DreamText>Omni La Costa Resort &amp; Spa&#039;s spacious grounds and ample amenities make relaxation almost a challenge - with countless activities, and San Diego just minutes away, making a choice isn&#039;t easy.</DreamText>
+                  <Rating>
+                    <KiwiRating ArchitectureDesign="7"
+                        AttentionToDetail="7"
+                        FitToPromise="7"
+                        FoodBeverage="8"
+                        GenerosityValue="7"
+                        Location="6"
+                        Rooms="8"
+                        Service="8"
+                        SpaFitness="9"
+                        WowHipFactor="5">7.2</KiwiRating>
+                      <LocalRating Source=""></LocalRating>
+                      <StarRating>4.5</StarRating>
+                    </Rating>
+                    <LocationInfo Latitude="33.091093"
+                        Longitude="-117.266918" >
+                      <Address
+                        City="Carlsbad"
+                        Region="California"
+                        RegionIsoCode="US-CA"
+                        Country="United States"
+                        CountryIsoCode="US"
+                        Area="Greater San Diego"
+                        Zone="North America" />
+                    </LocationInfo>
+              <ImageUrls>
+                  <ImageURL Id="1635-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR001373/s/001373-02-bedroom-king-bed.jpg    </ImageURL>
+                  <ImageURL Id="1636-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR001373/s/001373-03-outdoor-pool-night.jpg    </ImageURL>
+                  <ImageURL Id="1638-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR001373/s/001373-05-patio-firepit.jpg    </ImageURL>
+                  <ImageURL Id="25931-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR001373/s/001373-06-View-from-Lobby-Entry.jpg    </ImageURL>
+                  <ImageURL Id="25932-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR001373/s/001373-07-plaza.jpg    </ImageURL>
+                  <ImageURL Id="25933-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR001373/s/001373-08-sunset-fountain.jpg    </ImageURL>
+                  <ImageURL Id="25934-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR001373/s/001373-09-LaCosta-Guestroom.jpg    </ImageURL>
+                  <ImageURL Id="46324-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR001373/s/Omni-La-Costa-Resort-&amp;-Spa-001373-01-Edge-Pool-overview_300dpi.jpg    </ImageURL>
+                  <ImageURL Id="46999-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR001373/s/001373-01-plaza-room-view.jpg    </ImageURL>
+                  <ImageURL Id="47000-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR001373/s/001373-02-omni-day-042615.jpg    </ImageURL>
+                  <ImageURL Id="47001-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR001373/s/001373-04-lc_spa_coed_relax2_v2-300dpi-8x6.jpg    </ImageURL>
+                  <ImageURL Id="47002-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR001373/s/001373-05-lc_blue-fire-4x3-300-dpi.jpg    </ImageURL>
+                  <ImageURL Id="47003-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR001373/s/001373-06-la-costa-tennis-6x4-300dpi.jpg    </ImageURL>
+                  <ImageURL Id="47004-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR001373/s/001373-07-la-costa-pathway-6x4-300dpi.jpg    </ImageURL>
+                  <ImageURL Id="47005-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR001373/s/001373-08-la-costa-room-king-300dpi-7x4.jpg    </ImageURL>
+                  <ImageURL Id="47006-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR001373/s/001373-09-jr-villa-bedroom-300dpi-7x5.jpg    </ImageURL>
+                  <ImageURL Id="47007-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR001373/s/001373-10-edge-pool-cabana-6x4-300dpi.jpg    </ImageURL>
+                  <ImageURL Id="47008-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR001373/s/001373-11-diversions-terrace-pit-6x4-300dpi.jpg    </ImageURL>
+                  <ImageURL Id="47009-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR001373/s/001373-12-diversions-sport-lounge-bar-6x4-300dpi.jpg    </ImageURL>
+                  <ImageURL Id="47010-s" Size="s" Width="230" Height="129">
+                  https://cdn.stg.kiwicollection.net/media/property/PR001373/s/001373-13-golf-course.jpg    </ImageURL>
+                </ImageUrls>
+                        <Features>
+                          <Perks>
+                                            <Perk type="KIWI" value="&lt;ul&gt;&lt;li&gt;Best Available Rate Guarantee&lt;/li&gt;
+            
+                &lt;li&gt;Automatic Room Upgrade at Check In (Subject to Availability)&lt;/li&gt;
+            
+                &lt;li&gt;3PM Late Check Out (If Available)&lt;/li&gt;
+            
+            &lt;li&gt;Daily Breakfast for two&lt;/li&gt;
+            
+            &lt;/ul&gt;" />
+                                                            <Perk type="VISA" />
+                                          </Perks>
+                          <Amenities>
+                            <Amenity>DVD Player</Amenity>
+                            <Amenity>Handicapped Facilities</Amenity>
+                            <Amenity>Gazebo / Private Relaxation</Amenity>
+                            <Amenity>Laundry Service</Amenity>
+                            <Amenity>Concierge</Amenity>
+                            <Amenity>Outdoor Dining &amp; Lounging Area</Amenity>
+                            <Amenity>Flat Screen TV</Amenity>
+                            <Amenity>Front Desk</Amenity>
+                            <Amenity>Front Desk (24-Hour)</Amenity>
+                            <Amenity>High Speed Internet</Amenity>
+                            <Amenity>Room Service</Amenity>
+                          </Amenities>
+                          <Facilities>
+                            <Facility>Fitness Centre</Facility>
+                            <Facility>Jacuzzi / Hot Tub</Facility>
+                            <Facility>Tennis Courts</Facility>
+                            <Facility>Meeting / Private Room</Facility>
+                            <Facility>Indoor Sauna / Spa</Facility>
+                            <Facility>Spa</Facility>
+                            <Facility>Lounge/Bar</Facility>
+                            <Facility>Swimming Pool - Outdoor</Facility>
+                            <Facility>Restaurant(s)</Facility>
+                            <Facility>Yoga/Pilates</Facility>
+                          </Facilities>
+                          <Interests>
+                            <Interest>Business</Interest>
+                            <Interest>Swimming</Interest>
+                            <Interest>Hiking</Interest>
+                            <Interest>Mountain Biking</Interest>
+                            <Interest>Gastronomy</Interest>
+                            <Interest>Golf</Interest>
+                            <Interest>Spa</Interest>
+                            <Interest>Tennis</Interest>
+                          </Interests>
+                          <Styles>
+                            <Style>Classic</Style>
+                            <Style>Resort</Style>
+                          </Styles>
+                          <Settings>
+                            <Setting>Coastal</Setting>
+                          </Settings>
+                        </Features>
+                    </PropertyDetails>
+                </PropertyInfo>  
+            </PropertySearchResponse>
+
+## availability Method [/availability]
+
+The Availability method is used to get full details on all of the available rooms and rates for a single property. 
+Its endpoint is: https://api.kiwicollection.com/v1/availability
+
+The request must provide all of the following attributes:
+
+- PropertyCode
+- Rooms
+- InDate
+- OutDate
+- Adults
+- Children
+    
+If the Children attribute is greater than zero, you must also define a Children element, with as many subelements as there are Children. Anything beyond the specified amount will be ignored.
+
+- Children element (Optional)
+    - Child element: contains age attribute  
+
+### availability [POST]
+
+A standard availability request, with 2 adults, and 2 children.
+
++ Request (text/xml)
+
+    + Attributes
+        + AvailabilityRequest: PropertyCode InDate OutDate Adults Children Rooms (required) - Each attribute must be included.
+        + Children: <Child Age="10" /> <Child Age="14" /> - Number of children subelements must match the number of Children specified above.
+        
+    + Headers
+    
+            username:
+            password: 
+            
+    + Body
+    
+            <?xml version="1.0" encoding="UTF-8"?>
+            <AvailabilityRequest PropertyCode="PR002824" InDate="2016-07-12" OutDate="2016-07-14" Adults="2" Children="2" Rooms="1">
+                <Children>
+                    <Child Age="10" />
+                    <Child Age="14" />
+                </Children>
+            </AvailabilityRequest>
+
++ Response 200 (text/xml)
+
+    + Body
+    
+            <AvailabilityResponse InDate="2016-07-12" OutDate="2016-07-14" NumAdults="2" NumChildren="2" NumRooms="1">
+                <Children>
+                    <Child Age=”10” />
+                    <Child Age=”14” />
+                </Children>
+              <PropertyInfo Code="PR002824">
+                <AvailabilityInfo Available="true" LowestAverageRate="203.15" LowestNightRate="203.15" CurrencyCode="USD" />
+                <Rooms>
+                  <Room Code="PTS" Title="" Description="PETITE SUITE Studio suite:1 Large living/bed room combo: 650 sq ft:King bed:Pool or courtyard view">
+                    <Rate Code="RACK" Title="" Description="HYATT DAILY RATE Regularly published room rates." SpecialOfferRate=”True” RateType=”Visa”>
+                      <Policies>
+                        <Guarantee>CREDIT CARD GUARANTEE REQUIRED</Guarantee>
+                        <Cancellation>CANCEL BY 3PM PST 24 HOURS PRIOR TO ARRIVAL</Cancellation>
+                        <Deposit />
+                        <Prepay />
+                        <Tax>TAX: 2.000 PERCENT OCCUPANCY TAX: 10.500 PERCENT</Tax>
+                        <ServiceCharges>CA TOURISM ASSESSMENT: .15 PER RM PER NT</ServiceCharges>
+                        <SpecialRequirements />
+                        <Children />
+                        <Pets />
+                        <Checkin />
+                        <Miscellaneous />
+                      </Policies>
+                      <Price CurrencyCode="USD" ExclusiveNightlyAverage="364.00" ExclusiveTotal="728.00" InclusiveNightlyAverage="409.65" InclusiveTotal="819.30" TotalTaxes="91.3" TotalFeesAndSurcharges="0">
+                        <NightlyRate Date="2016-07-12" ExclusiveRate="364.00" />
+                        <NightlyRate Date="2016-07-13" ExclusiveRate="364.00" />
+                      </Price>
+                    </Rate>
+                  </Room>
+                  <Room Code="DDL" Title="" Description="2 DOUBLE BEDS 2 queen beds:All flrs:375 sq ft:Newspaper: Pool/Courtyard view:">
+                    <Rate Code="RACK" Title="" Description="HYATT DAILY RATE Regularly published room rates." SpecialOfferRate=”False” RateType=”Visa HNW”>
+                      <Policies>
+                        <Guarantee>CREDIT CARD GUARANTEE REQUIRED</Guarantee>
+                        <Cancellation>CANCEL BY 3PM PST 24 HOURS PRIOR TO ARRIVAL</Cancellation>
+                        <Deposit />
+                        <Prepay />
+                        <Tax>TAX: 2.000 PERCENT OCCUPANCY TAX: 10.500 PERCENT</Tax>
+                        <ServiceCharges>CA TOURISM ASSESSMENT: .15 PER RM PER NT</ServiceCharges>
+                        <SpecialRequirements />
+                        <Children />
+                        <Pets />
+                        <Checkin />
+                        <Miscellaneous />
+                      </Policies>
+                      <Price CurrencyCode="USD" ExclusiveNightlyAverage="239.00" ExclusiveTotal="478.00" InclusiveNightlyAverage="269.025" InclusiveTotal="538.05" TotalTaxes="60.05" TotalFeesAndSurcharges="0">
+                        <NightlyRate Date="2016-07-12" ExclusiveRate="239.00" />
+                        <NightlyRate Date="2016-07-13" ExclusiveRate="239.00" />
+                      </Price>
+                    </Rate>
+                  </Room>
+                  <Room Code="CLK" Title="" Description="REG CLUB 1KNG 1 king bed:375 sq ft:Lounge on 16th floor: Continental Breakfast:Hors d*oeuvers:Robe">
+                    <Rate Code="RACK" Title="" Description="HYATT DAILY RATE Regularly published room rates." SpecialOfferRate=”True” RateType=”Visa HNW”>
+                      <Policies>
+                        <Guarantee>CREDIT CARD GUARANTEE REQUIRED</Guarantee>
+                        <Cancellation>CANCEL BY 3PM PST 24 HOURS PRIOR TO ARRIVAL</Cancellation>
+                        <Deposit />
+                        <Prepay />
+                        <Tax>TAX: 2.000 PERCENT OCCUPANCY TAX: 10.500 PERCENT</Tax>
+                        <ServiceCharges>CA TOURISM ASSESSMENT: .15 PER RM PER NT</ServiceCharges>
+                        <SpecialRequirements />
+                        <Children />
+                        <Pets />
+                        <Checkin />
+                        <Miscellaneous />
+                      </Policies>
+                      <Price CurrencyCode="USD" ExclusiveNightlyAverage="294.00" ExclusiveTotal="588.00" InclusiveNightlyAverage="330.9" InclusiveTotal="661.80" TotalTaxes="73.8" TotalFeesAndSurcharges="0">
+                        <NightlyRate Date="2016-07-12" ExclusiveRate="294.00" />
+                        <NightlyRate Date="2016-07-13" ExclusiveRate="294.00" />
+                      </Price>
+                    </Rate>
+                    <Rate Code="ADPR" Title="" Description="ADV PURCHASE* - Rate must be purchased 3 days or more in advance. FULL PREPAY AT BOOKING: NON-REFUNDABLE" SpecialOfferRate=”False” RateType=”Visa”>
+                      <Policies>
+                        <Guarantee>CREDIT CARD DEPOSIT REQUIRED</Guarantee>
+                        <Cancellation>NON-REFUNDABLE FULL PREPAYMENT DUE AT BOOKING</Cancellation>
+                        <Deposit>DEPOSIT REQUIRED BY 17JUN13 DEPOSIT BY CREDIT CARD REQUIRED 2 NIGHT(S) DEPOSIT WILL BE CHARGED TO CREDIT CARD
+                        </Deposit>
+                        <Prepay />
+                        <Tax>TAX: 2.000 PERCENT OCCUPANCY TAX: 10.500 PERCENT</Tax>
+                        <ServiceCharges>CA TOURISM ASSESSMENT: .15 PER RM PER NT</ServiceCharges>
+                        <SpecialRequirements />
+                        <Children />
+                        <Pets />
+                        <Checkin />
+                        <Miscellaneous />
+                      </Policies>
+                      <Price CurrencyCode="USD" ExclusiveNightlyAverage="203.15" ExclusiveTotal="406.30" InclusiveNightlyAverage="228.695" InclusiveTotal="457.39" TotalTaxes="51.09" TotalFeesAndSurcharges="0">
+                        <NightlyRate Date="2016-07-12" ExclusiveRate="203.15" />
+                        <NightlyRate Date="2016-07-13" ExclusiveRate="203.15" />
+                      </Price>
+                    </Rate>
+                  </Room>
+                </Rooms>
+              </PropertyInfo>
+            </AvailabilityResponse>
+
+### availability - Children are older than max age for a child [POST]
+
+Properties may set their own maximum age for children. If a child is listed in the request that exceeds this age limit, the response will automatically move that child to an adult.
+You will notice in the mock example that the request specifies 2 adults, and 2 children. However, 14 is not considered a child for this property, and the response lists only one child, and 3 adults.
+
++ Request (text/xml)
+
+    + Attributes
+        + AvailabilityRequest: PropertyCode InDate OutDate Adults Children Rooms (required) - Each attribute must be included.
+        + Children: <Child Age="10" /> <Child Age="14" /> - Number of children subelements must match the number of Children specified above.
+        
+    + Headers
+    
+            username:
+            password: 
+            
+    + Body
+    
+            <?xml version="1.0" encoding="UTF-8"?>
+            <AvailabilityRequest PropertyCode="PR002824" InDate="2016-07-12" OutDate="2016-07-14" Adults="2" Children="2" Rooms="1">
+                <Children>
+                    <Child Age="10" />
+                    <Child Age="14" />
+                </Children>
+            </AvailabilityRequest>
+
++ Response 200 (text/xml)
+
+    + Body
+
+            <AvailabilityResponse InDate="2016-07-12" OutDate="2016-07-14" NumAdults="3" NumChildren="1" NumRooms="1">
+              <Note></Note>
+              <Children>
+                <Child Age=”10” />
+              </Children>
+              <PropertyInfo Code="PR002372">
+                <AvailabilityInfo Available="true" LowestAverageRate="203.15" LowestNightRate="203.15" CurrencyCode="USD" />
+                <Rooms>
+                  <Room Code="PTS" Title="" Description="PETITE SUITE Studio suite:1 Large living/bed room combo: 650 sq ft:King bed:Pool or courtyard view">
+                    <Rate Code="RACK" Title="" Description="HYATT DAILY RATE Regularly published room rates." SpecialOfferRate=”True” RateType=”Visa”>
+                      <Policies>
+                        <Guarantee>CREDIT CARD GUARANTEE REQUIRED</Guarantee>
+                        <Cancellation>CANCEL BY 3PM PST 24 HOURS PRIOR TO ARRIVAL</Cancellation>
+                        <Deposit />
+                        <Prepay />
+                        <Tax>TAX: 2.000 PERCENT OCCUPANCY TAX: 10.500 PERCENT</Tax>
+                        <ServiceCharges>CA TOURISM ASSESSMENT: .15 PER RM PER NT</ServiceCharges>
+                        <SpecialRequirements />
+                        <Children />
+                        <Pets />
+                        <Checkin />
+                        <Miscellaneous />
+                      </Policies>
+                      <Price CurrencyCode="USD" ExclusiveNightlyAverage="364.00" ExclusiveTotal="728.00" InclusiveNightlyAverage="409.65" InclusiveTotal="819.30" TotalTaxes="91.3" TotalFeesAndSurcharges="0">
+                        <NightlyRate Date="2016-07-12" ExclusiveRate="364.00" />
+                        <NightlyRate Date="2016-07-13" ExclusiveRate="364.00" />
+                      </Price>
+                    </Rate>
+                  </Room>
+                  <Room Code="DDL" Title="" Description="2 DOUBLE BEDS 2 queen beds:All flrs:375 sq ft:Newspaper: Pool/Courtyard view:">
+                    <Rate Code="RACK" Title="" Description="HYATT DAILY RATE Regularly published room rates." SpecialOfferRate=”False” RateType=”Visa HNW”>
+                      <Policies>
+                        <Guarantee>CREDIT CARD GUARANTEE REQUIRED</Guarantee>
+                        <Cancellation>CANCEL BY 3PM PST 24 HOURS PRIOR TO ARRIVAL</Cancellation>
+                        <Deposit />
+                        <Prepay />
+                        <Tax>TAX: 2.000 PERCENT OCCUPANCY TAX: 10.500 PERCENT</Tax>
+                        <ServiceCharges>CA TOURISM ASSESSMENT: .15 PER RM PER NT</ServiceCharges>
+                        <SpecialRequirements />
+                        <Children />
+                        <Pets />
+                        <Checkin />
+                        <Miscellaneous />
+                      </Policies>
+                      <Price CurrencyCode="USD" ExclusiveNightlyAverage="239.00" ExclusiveTotal="478.00" InclusiveNightlyAverage="269.025" InclusiveTotal="538.05" TotalTaxes="60.05" TotalFeesAndSurcharges="0">
+                        <NightlyRate Date="2016-07-12" ExclusiveRate="239.00" />
+                        <NightlyRate Date="2016-07-13" ExclusiveRate="239.00" />
+                      </Price>
+                    </Rate>
+                  </Room>
+                  <Room Code="CLK" Title="" Description="REG CLUB 1KNG 1 king bed:375 sq ft:Lounge on 16th floor: Continental Breakfast:Hors d*oeuvers:Robe">
+                    <Rate Code="RACK" Title="" Description="HYATT DAILY RATE Regularly published room rates." SpecialOfferRate=”True” RateType=”Visa HNW”>
+                      <Policies>
+                        <Guarantee>CREDIT CARD GUARANTEE REQUIRED</Guarantee>
+                        <Cancellation>CANCEL BY 3PM PST 24 HOURS PRIOR TO ARRIVAL</Cancellation>
+                        <Deposit />
+                        <Prepay />
+                        <Tax>TAX: 2.000 PERCENT OCCUPANCY TAX: 10.500 PERCENT</Tax>
+                        <ServiceCharges>CA TOURISM ASSESSMENT: .15 PER RM PER NT</ServiceCharges>
+                        <SpecialRequirements />
+                        <Children />
+                        <Pets />
+                        <Checkin />
+                        <Miscellaneous />
+                      </Policies>
+                      <Price CurrencyCode="USD" ExclusiveNightlyAverage="294.00" ExclusiveTotal="588.00" InclusiveNightlyAverage="330.9" InclusiveTotal="661.80" TotalTaxes="73.8" TotalFeesAndSurcharges="0">
+                        <NightlyRate Date="2016-07-12" ExclusiveRate="294.00" />
+                        <NightlyRate Date="2016-07-13" ExclusiveRate="294.00" />
+                      </Price>
+                    </Rate>
+                    <Rate Code="ADPR" Title="" Description="ADV PURCHASE* - Rate must be purchased 3 days or more in advance. FULL PREPAY AT BOOKING: NON-REFUNDABLE" SpecialOfferRate=”False” RateType=”Visa”>
+                      <Policies>
+                        <Guarantee>CREDIT CARD DEPOSIT REQUIRED</Guarantee>
+                        <Cancellation>NON-REFUNDABLE FULL PREPAYMENT DUE AT BOOKING</Cancellation>
+                        <Deposit>DEPOSIT REQUIRED BY 17JUN13 DEPOSIT BY CREDIT CARD REQUIRED 2 NIGHT(S) DEPOSIT WILL BE CHARGED TO CREDIT CARD
+                        </Deposit>
+                        <Prepay />
+                        <Tax>TAX: 2.000 PERCENT OCCUPANCY TAX: 10.500 PERCENT</Tax>
+                        <ServiceCharges>CA TOURISM ASSESSMENT: .15 PER RM PER NT</ServiceCharges>
+                        <SpecialRequirements />
+                        <Children />
+                        <Pets />
+                        <Checkin />
+                        <Miscellaneous />
+                      </Policies>
+                      <Price CurrencyCode="USD" ExclusiveNightlyAverage="203.15" ExclusiveTotal="406.30" InclusiveNightlyAverage="228.695" InclusiveTotal="457.39" TotalTaxes="51.09" TotalFeesAndSurcharges="0">
+                        <NightlyRate Date="2016-07-12" ExclusiveRate="203.15" />
+                        <NightlyRate Date="2016-07-13" ExclusiveRate="203.15" />
+                      </Price>
+                    </Rate>
+                  </Room>
+                </Rooms>
+              </PropertyInfo>
+            </AvailabilityResponse>
+
+<!-- 
+## batchAvailability Method [/batchAvailability]
+
+The batchAvailability method is used to get full details on all the available rooms and rates for multiple properties at once. It is very similar to the Availability method, except that the caller can request availability for multiple properties at once. 
+Its endpoint is: https://api.kiwicollection.com/v1/batchAvailability
+
+For each property, the caller is required to provide all of the attributes of the request (the same as for the Availability method):
+
+- PropertyCode
+- Rooms
+- InDate
+- OutDate
+- Adults
+- Children
+    
+If the Children attribute is greater than zero, you must also define a Children element, with as many subelements as there are Children. Anything beyond the specified amount will be ignored.
+
+- Children element (Optional)
+    - Child element: contains age attribute  
+
+The request is essentially a collection of AvailabilityRequest elements wrapped in an AvailabilityRequests element (inside the BatchAvailabilityRequest element).
+
+The response given by the BatchAvailability method is simply a collection of AvailabilityResponses wrapped in a BatchAvailabilityResponse element. 
+
+### batchAvailability [POST]
+
+This a simple batchAvailability request for three property codes. The mock response data is simplifed and removed the actual property details.
+
++ Request (text/xml)
+    
+    + Attributes
+        + AvailabilityRequest: PropertyCode InDate OutDate Adults Children Rooms (required) - Required.
+        + Children: <Child Age="10" /> <Child Age="14" /> - Number of children subelements must match the number of Children specified above.
+        
+    + Headers
+    
+            username:
+            password: 
+            
+    + Body
+    
+            <?xml version="1.0" encoding="UTF-8"?>
+            <BatchAvailabilityRequest>
+               <AvailabilityRequests>
+               <AvailabilityRequest PropertyCode="PR002372" InDate="2016-07-12" OutDate="2016-07-13" Adults="2" Children="2" Rooms="1">
+                  <Children>
+                    <Child Age="10" />
+                    <Child Age="14" />
+                   </Children>
+                  </AvailabilityRequest>      
+                  <AvailabilityRequest PropertyCode="PR000042" InDate="2016-07-12" OutDate="2016-07-13" Adults="2" Children="2" Rooms="1">
+                  <Children>
+                    <Child Age="10" />
+                    <Child Age="14" />
+                  </Children>
+                  </AvailabilityRequest>      
+                  <AvailabilityRequest PropertyCode="PR002824" InDate="2016-07-12" OutDate="2016-07-13"  Adults="2" Children="2" Rooms="1">
+                   <Children>
+                    <Child Age="10" />
+                    <Child Age="14" />
+                   </Children>
+                  </AvailabilityRequest>                  
+               </AvailabilityRequests>
+            </BatchAvailabilityRequest>
+    
++ Response 200 (text/xml)
+
+    + Body
+
+            <BatchAvailabilityResponse>
+               <AvailabilityResponse InDate="2016-07-15" OutDate="2016-07-16" NumAdults="2" NumChildren="2" NumRooms="1">
+                  <Children>
+                      <Child Age=”10” />
+                      <Child Age=”14” />
+                  </Children>      
+                  <PropertyInfo Code="PR002372">
+                     …
+                  </PropertyInfo>
+               </AvailabilityResponse>
+               <AvailabilityResponse InDate="2016-07-15" OutDate="2016-07-16" NumAdults="2" NumChildren="2" NumRooms="1">
+                  <Children>
+                      <Child Age=”10” />
+                      <Child Age=”14” />
+                  </Children>      
+                  <PropertyInfo Code="PR000042">
+                     …
+                  </PropertyInfo>
+               </AvailabilityResponse>
+               <AvailabilityResponse InDate="2016-07-15" OutDate="2016-07-16" NumAdults="2" NumChildren="2" NumRooms="1">
+                  <Children>
+                      <Child Age=”10” />
+                      <Child Age=”14” />
+                  </Children>
+                  <PropertyInfo Code="PR002911">
+                     …
+                  </PropertyInfo>
+               </AvailabilityResponse> 
+            </BatchAvailabilityResponse>
+
+-->
+## createReservation Method [/createReservation]
+
+The CreateReservation Method is used to actually make the reservation and requires more data than any of the other methods. This method request takes in the reservation information, the credit card payment info, guest info, and any custom message from the guest to the hotel. 
+
+The most important details are the reservation information and are passed in as required attributes of the CreateReservationRequest element:
+
+- PropertyCode
+- InDate
+- OutDate
+- Adults
+- Children
+- Children element (Optional): The children element contains child element(s) as many as the children specified in the attribute above, anything beyond the specified amount will be ignored.
+    - Child element: contains Age attribute  
+- Rooms – Number of rooms of this type to book. Kiwi generally supports the ability to book only one room at a time, but some hotels allow multiple room bookings in a single call
+- RateCode – The code that identifies the rate for the specific room
+- RoomCode – The code that identifies the room
+- ExternalId(Optional) – External id to be passed in as a way to keep track of reservation. Maximum 40 character long alphanumeric string.
+
+This method also requires payment information by using the PaymentInfo element, which contains the following attributes:
+
+- CardNumber – 16 digit credit card number
+- CardType – Visa, AmericanExpress, etc
+- CardSecurity – The three digit security code that generally appears on the back of one’s card, also known as the CCV.
+- CardholderName
+- ExpiryMonth – In numerical format (MM)
+- ExpiryYear – 4 digit year format (YYYY)
+
+The method needs to provide at least one guest, but can include multiple guests and may also require an XML element containing a message from the guest to the hotel. Please see the method example for information on structuring these additional elements.
+
+Its endpoint is: https://api.kiwicollection.com/v1/createReservation
+    
+### createReservation [POST]
+
+Example of creating a reservation for a single property, with our dummy credit card number (1999999999999999), and a custom message to the Hotel from the guest.
+
++ Request (text/xml)
+
+    + Attributes
+        + PropertyCode: PR002372 (required, string)
+        + InDate: (required, string) - 2016-07-18 
+        + OutDate: (required, string) - 2016-07-21 
+        + Adults: 2 (required, number)
+        + Children: 2 (required, number)
+        + Rooms: 1 (required, number)
+        + RateCode: RACK (required, string)
+        + RoomCode: PTS (required, string)
+        + ExternalId: 9joqiRYLVoYHQ0kspObLywLgvmyWelpPSCH44r1f (string) - External id to be passed in as a way to keep track of reservation. Maximum 40 character long alphanumeric string.
+        + CardNumber: 1999999999999999 (required, number) – 16 digit credit card number.
+        + CardType: Visa (required, string) – Visa AmericanExpress etc
+        + CardSecurity: 123 (required, number) – The three digit security code that generally appears on the back of one’s card, also known as the CCV.
+        + CardholderName: Bob Barker (required, string)
+        + ExpiryMonth: 09 (required, number) – In numerical format (MM)
+        + ExpiryYear: 2017 (required, number) – 4 digit year format (YYYY)
+
+    + Headers
+    
+            username:
+            password: 
+            
+    + Body
+
+            <?xml version="1.0" encoding="UTF-8"?>
+            <CreateReservationRequest PropertyCode="PR002824" InDate="2016-07-18" OutDate="2016-07-21" Adults="2" Children="2" Rooms="1" RateCode="RACK" RoomCode="PTS" ExternalId="9joqiRYLVoYHQ0kspObLywLgvmyWelpPSCH44r1f">
+              <Children>
+                 <Child Age="10" />
+                 <Child Age="14" />
+              </Children>
+              <Guests>
+                <Guest FirstName="Bob" LastName="Barker" Title="Mr">
+                  <ContactInfo AddressLine1="1235 Main St" AddressLine2="" City="Vancouver" Country="Canada" Email="bobbarker@gmail.com" PhoneCountryCode="1" PhoneAreaCode="888" Phone="123-4567" State="BC" ZipPostal="V2R 3R3" />
+                </Guest>
+              </Guests>
+              <PaymentInfo CardNumber="1999999999999999" CardType="Visa" CardSecurity="123" CardholderName="Bob Barker" ExpiryMonth="09" ExpiryYear="2017" />
+              <MessageToHotel>Please include an extra bed in the room</MessageToHotel>
+            </CreateReservationRequest>
+
++ Response 200 (text/xml)
+   
+    + Headers
+    
+            username:
+            password: 
+            
+    + Body
+
+            <?xml version="1.0" encoding="UTF-8"?>
+            <CreateReservationResponse ReservationSuccess="true">
+                <ReservationSummary ConfirmationId="HY0043103825" Status="Active" CurrencyCode="USD" InDate="2016-07-18" OutDate="2016-07-21" TotalCostExclusive="1272.00" TotalCostInclusive="1431.45" Adults="2" Children="2" Rooms="1" ExternalId=”9joqiRYLVoYHQ0kspObLywLgvmyWelpPSCH44r1f”>
+                    <Children>
+                        <Child Age=”10” />
+                        <Child Age=”14” />
+                    </Children>
+                </ReservationSummary>
+                <PropertyInfo Code="PR002372" />
+                <Room Code="PTS" Description="PETITE SUITE Studio suite:1 Large living/bed room combo: 650 sq ft:King bed:Pool or courtyard view" Title="">
+                    <RoomRate Code="RACK" Title="" Description="HYATT DAILY RATE Regularly published room rates.">
+                    <Price CurrencyCode="USD" ExclusiveNightlyAverage="424.00" ExclusiveTotal="1272.00" InclusiveNightlyAverage="477.15" InclusiveTotal="1431.45" TotalTaxes="159.45" />
+                    </RoomRate>
+                </Room>
+                <Policies>
+                    <Guarantee>CREDIT CARD GUARANTEE REQUIRED</Guarantee>
+                    <Cancellation>CANCEL BY 3PM PST 24 HOURS PRIOR TO ARRIVAL</Cancellation>
+                    <Deposit />
+                    <Prepay />
+                    <Tax>TAX: 2.000 PERCENT OCCUPANCY TAX: 10.500 PERCENT</Tax>
+                    <ServiceCharges>CA TOURISM ASSESSMENT: .15 PER RM PER NT</ServiceCharges>
+                </Policies>
+            </CreateReservationResponse>
+
+
+## viewReservation Method [/viewReservation]
+
+The ViewReservation Method is a simple method allowing the end user to look up the details about an existing reservation via the Confirmation ID. Its endpoint is:
+https://api.kiwicollection.com/v1/viewReservation
+
+### viewReservation [POST]
+
+This a simple example of looking up a reservation record via confirmation ID.
+
++ Request (text/xml)
+    
+    + Attributes
+        + ConfirmationId: HY0043103825 (required, number) - Confirmation number sent back with your reservation.
+        
+    + Headers
+    
+            username:
+            password: 
+    
+    + Body
+
+            <?xml version="1.0" encoding="UTF-8"?>
+            <ViewReservationRequest ConfirmationId="HY0043103825" />
+
++ Response 200 (text/xml)
+
+    + Body
+
+            <ViewReservationResponse>
+               <ReservationSummary ConfirmationId="HY0043103825" Status="Active" CurrencyCode="USD" InDate="2016-07-18" OutDate="2016-07-21" TotalCostExclusive="1272.00" TotalCostInclusive="1431.45" Rooms="1" ExternalId=’ 9joqiRYLVoYHQ0kspObLywLgvmyWelpPSCH44r1f’ Adults=”2” Children=”2”>
+                  <Children>
+                      <Child Age=”10” />
+                      <Child Age=”14” />
+                  </Children>
+               </ReservationSummary>
+               <PropertyInfo Code="PR002372"/>
+               <Room Code="PTS" Description="PETITE SUITE Studio suite:1 Large living/bed room combo: 650 sq ft:King bed:Pool or courtyard view" Title="">
+                  <RoomRate Code="RACK" Title="" Description="HYATT DAILY RATE Regularly published room rates.">
+                     <Price CurrencyCode="USD" ExclusiveNightlyAverage="424.00" ExclusiveTotal="1272.00" InclusiveNightlyAverage="477.15" InclusiveTotal="1431.45" TotalTaxes="159.45"/>
+                  </RoomRate>
+               </Room>
+               <Policies>
+                  <Guarantee>CREDIT CARD GUARANTEE REQUIRED</Guarantee>
+                  <Cancellation>CANCEL BY 3PM PST 24 HOURS PRIOR TO ARRIVAL</Cancellation>
+                  <Deposit/>
+                  <Prepay/>
+                  <Tax>TAX: 2.000 PERCENT OCCUPANCY TAX:    10.500 PERCENT</Tax>
+                  <ServiceCharges>CA TOURISM ASSESSMENT: .15 PER RM PER NT</ServiceCharges>
+               </Policies>
+            </ViewReservationResponse>
+
+## viewReservationByExternalId Method [/viewReservationByExternalId]
+
+This ViewReservationByExternalId method functions the same as the ViewReservation method but using the ExternalId to lookup the reservation.
+
+Its endpoint is:
+https://api.kiwicollection.com/v1/viewReservationByExternalId
+
+### viewReservationByExternalId [POST]
+
+This is an example of a simple reservation record lookup, using the external ID.
+
++ Request (text/xml)
+    
+    + Attributes
+        + ExternalId: 9joqiRYLVoYHQ0kspObLywLgvmyWelpPSCH44r1f (required) - Maximum 40 character long alphanumeric string.
+        
+    + Headers
+    
+            username:
+            password: 
+    
+    + Body
+
+            <?xml version="1.0" encoding="UTF-8"?>
+            <ViewReservationByExternalIdRequest ExternalId="9joqiRYLVoYHQ0kspObLywLgvmyWelpPSCH44r1f" />
+
++ Response 200 (text/xml)
+
+    + Body
+    
+            <ViewReservationByExternalIdResponse>
+               <ReservationSummary ConfirmationId="HY0043103825" Status="Active" CurrencyCode="USD" InDate="2016-07-18" OutDate="2016-07-21" TotalCostExclusive="1272.00" TotalCostInclusive="1431.45" Rooms="1" Adults=”2” Children=”2” ExternalId=’ 9joqiRYLVoYHQ0kspObLywLgvmyWelpPSCH44r1f’>
+                  <Children>
+                      <Child Age=”10” />
+                      <Child Age=”14” />
+                  </Children>
+               </ReservationSummary>
+               <PropertyInfo Code="PR002372"/>
+               <Room Code="PTS" Description="PETITE SUITE Studio suite:1 Large living/bed room combo: 650 sq ft:King bed:Pool or courtyard view" Title="">
+                  <RoomRate Code="RACK" Title="" Description="HYATT DAILY RATE Regularly published room rates.">
+                     <Price CurrencyCode="USD" ExclusiveNightlyAverage="424.00" ExclusiveTotal="1272.00" InclusiveNightlyAverage="477.15" InclusiveTotal="1431.45" TotalTaxes="159.45"/>
+                  </RoomRate>
+               </Room>
+               <Policies>
+                  <Guarantee>CREDIT CARD GUARANTEE REQUIRED</Guarantee>
+                  <Cancellation>CANCEL BY 3PM PST 24 HOURS PRIOR TO ARRIVAL</Cancellation>
+                  <Deposit/>
+                  <Prepay/>
+                  <Tax>TAX: 2.000 PERCENT OCCUPANCY TAX:    10.500 PERCENT</Tax>
+                  <ServiceCharges>CA TOURISM ASSESSMENT: .15 PER RM PER NT</ServiceCharges>
+               </Policies>
+            </ViewReservationByExternalIdResponse>
+
+
+## cancelReservation Method [/cancelReservation]
+
+The CancelReservation method is used to cancel an existing reservation. Note that Kiwi currently does not support modifying an existing reservation, so if an existing reservation needs to be modified it needs to be cancelled and re-booked.
+
+This method is also very simple and takes in two attributes:
+
+- ConfirmationId – ID of the reservation
+- Reason (Optional) – In order to improve our service, we track and store the reason for the cancellation
+
+### cancelReservation [POST]
+
+Simple example of canceling a reservation, with confirmationId and Reason.
+
++ Request (text/xml)    
+    + Attributes
+        + ConfirmationId: HY0018381091 (required) - Confirmation number sent back with your reservation.
+        + Reason: No longer travelling - Cancellation reason, for internal tracking.
+        
+    + Headers
+    
+            username:
+            password: 
+    
+    + Body
+
+            <?xml version="1.0" encoding="UTF-8"?>
+            <CancelReservationRequest ConfirmationId="HY0018381091" Reason="No longer travelling" />
+
++ Response 200 (text/xml)
+
+    + Body
+
+            <CancelReservationResponse CancelledSuccess=”true” ConfirmationId=”HY0018381091” CancellationId=”10045” />
+
+## cities Method [/cities]
+
+This method will return all cities and pertaining information about each cities such as:
+
+- Country
+- Region
+- Area
+
+### cities [POST]
+
+A truncated example, listing only a few return responses. A live response would list every available city in the database.
+
++ Request (text/xml)
+    
+    + Headers
+    
+            username:
+            password: 
+    
+    + Body
+
++ Response 200 (text/xml)
+
+    + Body
+
+            <?xml version="1.0" encoding="utf-8"?>
+            <CitiesResponse>
+                 <City Name=”Scotssdale” Area=”Phoenix” Region=”Arizona” Country=”United States”/>
+                 <City Name=”Sooke” Area=”Vancouver Island” Region=”British Columbia” Country=”Canada”/>
+            </CitiesResponse>
